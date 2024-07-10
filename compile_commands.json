@@ -1,0 +1,24 @@
+[
+  {
+    "arguments": [
+      "/usr/bin/gcc",
+      "-c",
+      "-Wall",
+      "-Werror",
+      "-Wno-unused-function",
+      "-Wextra",
+      "-g3",
+      "-fsanitize=undefined",
+      "-fno-sanitize-recover",
+      "-O0",
+      "-std=gnu11",
+      "-D_GNU_SOURCE",
+      "-o",
+      "sockui",
+      "main.c"
+    ],
+    "directory": "/home/thomasokeeffe/workspace/libs/sockui",
+    "file": "/home/thomasokeeffe/workspace/libs/sockui/main.c",
+    "output": "/home/thomasokeeffe/workspace/libs/sockui/sockui"
+  }
+]
