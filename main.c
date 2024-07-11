@@ -11,25 +11,36 @@
 #include <errno.h>
 #include <sys/socket.h>
 
+/// Simple wrapper for writing string literals
 #define emit(fd, s) write(fd, s, sizeof(s));
+
+/// Shortcut macro; should remove after clarifying error API
 #define IF_ERR_RETURN(cond) if ((cond) == -1) { return -1; }
 
+// Global so signal handler can find it
 SockUI sui = {
     .port = 6969,
     .client_fd = -1,
     .serv_fd = -1,
 };
 
+/**
+ * Read as much from a socket as possible.
+ *
+ * @fd Socket file descriptor, must be SOCK_NONBLOCK
+ * @buf Buffer of bytes to read into. Passing a null pointer empties the socket
+ *      without saving any data
+ * @nbytes Length of buf. Ignored when buf == NULL
+ * @return Number of bytes read, or -1 on error
+ */
 static ssize_t sock_read(int fd, void *buf, size_t nbytes) {
     ssize_t ret, total=0;
     if (!buf) {
-        char c;
-        while((ret = read(fd, &c, 1))) {
-            if (!ret || (ret == -1 && (errno == EAGAIN || errno == EWOULDBLOCK))) {
-                break;
-            } else if (ret == -1) {
-                return -1;
-            }
+        uint64_t c;
+        while((ret = read(fd, &c, sizeof(c)))) {
+            if (ret == -1 && (errno == EAGAIN || errno == EWOULDBLOCK)) break;
+            else if (ret == -1) return -1;
+
             total += ret;
         }
 
@@ -38,7 +49,7 @@ static ssize_t sock_read(int fd, void *buf, size_t nbytes) {
 
     while((ret = read(fd, buf + total, nbytes - total))) {
         if (ret == -1 && (errno == EAGAIN || errno == EWOULDBLOCK)) break;
-        else if (ret == -1 || ret == 0) return -1;
+        else if (ret == -1) return -1;
 
         total += ret;
     }
@@ -46,6 +57,14 @@ static ssize_t sock_read(int fd, void *buf, size_t nbytes) {
     return total;
 }
 
+/**
+ * Wrapper for write socket writing that assumes all bytes must be sent OR ELSE
+ *
+ * @fd Socket file descriptor, must be SOCK_NONBLOCK
+ * @buf Buffer of bytes to write from.
+ * @nbytes Length of buf
+ * @return 0 on success, -1 on error. TODO: Make this return num read bytes?
+ */
 static ssize_t sock_write(int fd, void *buf, size_t nbytes) {
     ssize_t ret = write(fd, buf, nbytes);
     if (ret != (ssize_t) nbytes || ret == -1)
@@ -54,26 +73,39 @@ static ssize_t sock_write(int fd, void *buf, size_t nbytes) {
     return 0;
 }
 
+/**
+ * Uses ANSI escape codes to get the size of the terminal on the other end of
+ * the socket. TODO: Make this a public API function and figure out a consisten
+ * error API
+ *
+ * @sui A valid SockUI object
+ * @dim Result of getting terminal size. Rows, Cols
+ * @return Bool indicating success
+ */
 static bool get_term_size(SockUI *sui, int dim[2]) {
-    if (sock_read(sui->client_fd, NULL, 0) == -1) {
+    if (sock_read(sui->client_fd, NULL, 0) == -1)
         return false;
-    }
 
     emit(sui->client_fd, "\033[s\033[9999;9999H\033[6n\033[u");
     usleep(100*1000);
 
-    if (sock_read(sui->client_fd, sui->tmpbuf, sizeof(sui->tmpbuf)) == -1) {
+    // sui->tmpbuf is definitely big enough
+    if (sock_read(sui->client_fd, sui->tmpbuf, sizeof(sui->tmpbuf)) == -1)
         return false;
-    }
 
     sui->tmpbuf[sizeof(sui->tmpbuf)-1] = '\0';
-    if (sscanf((char *) sui->tmpbuf, "\033[%d;%dR", dim, dim+1) != 2) {
+    if (sscanf((char *) sui->tmpbuf, "\033[%d;%dR", dim, dim+1) != 2)
         return false;
-    }
 
     return true;
 }
 
+/**
+ * Boilerplate for opening, binding, and listening a new socket
+ *
+ * @port The port to open the socket on
+ * @return The socket fd or -1 on error
+ */
 static int new_sock(int port) {
     int fd = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
     if (fd < 0)
@@ -102,6 +134,17 @@ err:
     return -1;
 }
 
+/**
+ * Converts a Unicode wchar_t* string to UTF-8. Bails out on invalid input.
+ * No results of this function are valid if it returns -1
+ *
+ * @str Unicode string to convert
+ * @nstr Length of str
+ * @buf Buffer to write UTF-8 into
+ * @nbuf Length of buf
+ * @nbytes Number of bytes written into buf
+ * @return Number of CODEPOINTS written to buf or -1 on error
+ */
 static int unicode_to_utf8(wchar_t *str, int nstr, uint8_t *buf, int nbuf, int *nbytes) {
     if (!str || !nstr) return 0;
     uint8_t *orig = buf;
@@ -140,6 +183,15 @@ eilseq:
     return -1;
 }
 
+/**
+ * Gets the byte offset for a given number of codepoints in a UTF-8 string.
+ * Assumes there are enough codepoints in the buffer for this operation to be
+ * valid
+ *
+ * @buf A UTF-8 valid string of at least $count codepoints
+ * @count Number of codepoints to count for offset
+ * @return The offset of the codepoint byte after $count codepoints
+ */
 static int utf8_offset(uint8_t *buf, int count) {
     if (!count) return 0;
 
@@ -155,7 +207,10 @@ static int utf8_offset(uint8_t *buf, int count) {
 }
 
 /**
- * This function assumes port, priv, resize, and draw are initialized
+ * Initialize a SockUI object
+ *
+ * @sui A valid pointer to a SockUI object with port initialized
+ * @return 0 on success, -1 on error
  */
 int sockui_init(SockUI *sui) {
     sui->serv_fd = new_sock(sui->port);
@@ -169,6 +224,14 @@ int sockui_init(SockUI *sui) {
     return 0;
 }
 
+/**
+ * Receive input from a SockUI object. Any bytes received over the socket that
+ * are not considered SockUI control bytes are returned to the user. Control
+ * bytes include: ^L. TODO: Distinguish between error and no data
+ *
+ * @sui A valid pointer to a SockUI object
+ * @return A single byte on success, or -1 on error or no bytes to read
+ */
 int sockui_recv(SockUI *sui) {
     int ret;
     bool is_ctrl_code;
@@ -179,7 +242,7 @@ int sockui_recv(SockUI *sui) {
         if (sui->ibuf_cap == sui->ibuf_idx) {
             sui->ibuf_cap = sock_read(sui->client_fd, sui->ibuf, sizeof(sui->ibuf));
             if (sui->ibuf_cap == -1 || sui->ibuf_cap == 0) {
-                ret = sui->ibuf_cap;
+                ret = -1;
                 goto reset;
             }
             sui->ibuf_idx = 0;
@@ -201,6 +264,15 @@ reset:
     return ret;
 }
 
+/**
+ * Wrapper for drawing menus over a SockUI. Menu strings should not contain
+ * newlines or carriage returns. These will be inserted after each row.
+ *
+ * @sui A valid pointer to a SockUI object
+ * @menu A valid Unicode string representing the menu
+ * @dim The dimensions of $menu. Rows, Cols
+ * @return 0 on success, -1 on error
+ */
 int sockui_draw_menu(SockUI *sui, wchar_t *menu, int dim[2]) {
     int nstr = dim[0]*dim[1];
     int nbuf = sizeof(sui->tmpbuf);
@@ -231,6 +303,13 @@ int sockui_draw_menu(SockUI *sui, wchar_t *menu, int dim[2]) {
     return 0;
 }
 
+/**
+ * Initialize the client's terminal after socket accept, and set the SockUI's
+ * client_fd
+ *
+ * @sui A valid pointer to a SockUI object
+ * @client_fd File descriptor of the accepted client
+ */
 void sockui_attach_client(SockUI *sui, int client_fd) {
     sui->client_fd = client_fd;
     emit(sui->client_fd, "\033[?1049h");
@@ -239,6 +318,11 @@ void sockui_attach_client(SockUI *sui, int client_fd) {
     emit(sui->client_fd, "\033[?25l");
 }
 
+/**
+ * Deinitialize the client's terminal and close server and client sockets
+ *
+ * @sui A valid pointer to a SockUI object
+ */
 void sockui_close(SockUI *sui) {
     emit(sui->client_fd, "\033[?2J");
     emit(sui->client_fd, "\033[?1049l");
