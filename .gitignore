@@ -1,0 +1,5 @@
+demo
+*.swp
+*.o
+*.a
+.cache/

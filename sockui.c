@@ -1,12 +1,8 @@
 #include "sockui.h"
 
-#include <locale.h>
-#include <signal.h>
 #include <stdio.h>
 #include <stdbool.h>
-#include <stdlib.h>
 #include <unistd.h>
-#include <termios.h>
 #include <netinet/in.h>
 #include <errno.h>
 #include <sys/socket.h>
@@ -16,13 +12,6 @@
 
 /// Shortcut macro; should remove after clarifying error API
 #define IF_ERR_RETURN(cond) if ((cond) == -1) { return -1; }
-
-// Global so signal handler can find it
-SockUI sui = {
-    .port = 6969,
-    .client_fd = -1,
-    .serv_fd = -1,
-};
 
 /**
  * Read as much from a socket as possible.
@@ -82,7 +71,7 @@ static ssize_t sock_write(int fd, void *buf, size_t nbytes) {
  * @dim Result of getting terminal size. Rows, Cols
  * @return Bool indicating success
  */
-static bool get_term_size(SockUI *sui, int dim[2]) {
+bool sockui_get_size(SockUI *sui, int dim[2]) {
     if (sock_read(sui->client_fd, NULL, 0) == -1)
         return false;
 
@@ -252,7 +241,7 @@ int sockui_recv(SockUI *sui) {
         if (b == 0x0c) { // ^L
             is_ctrl_code = true;
             sui->should_redraw = true;
-            printf("^L"); // Should clear screen and request redraw
+            emit(sui->client_fd, "\033[2J");
         }
     } while (is_ctrl_code);
 
@@ -331,52 +320,3 @@ void sockui_close(SockUI *sui) {
     close(sui->serv_fd);
 }
 
-void handler(int sig) {
-    (void) sig;
-    if (sui.client_fd != -1)
-        sockui_close(&sui);
-
-    printf("\n"); // Don't care
-    _exit(0);
-}
-
-int main() {
-    signal(SIGINT, handler);
-    signal(SIGQUIT, handler);
-
-    int ret = sockui_init(&sui);
-    if (ret == -1) {
-        fprintf(stderr, "Failed to init SockUI\n");
-        exit(1);
-    }
-
-    struct sockaddr_in client_sock_addr = { 0 };
-    socklen_t client_len = sizeof(client_sock_addr);
-    int client_fd = accept4(sui.serv_fd, (struct sockaddr *) &client_sock_addr, &client_len, SOCK_NONBLOCK);
-    if (client_fd == -1) {
-        fprintf(stderr, "Failed to accept client\n");
-        exit(1);
-    }
-    sockui_attach_client(&sui, client_fd);
-
-    int dim[2];
-    bool success = get_term_size(&sui, dim);
-    if (success)
-        printf("Rows: %d, Columns: %d\n", dim[0], dim[1]);
-    else
-        printf("Failed to get terminal size\n");
-
-    int i = 0;
-    wchar_t *menu = wcsdup(L"┌─────────┐│test menu│└─────────┘");
-    dim[0] = 3;
-    dim[1] = 11;
-    while (1) {
-        usleep(250000);
-        menu[16] = L'0' + (i++%10);
-        sockui_draw_menu(&sui, menu, dim);
-    }
-
-    sockui_close(&sui);
-
-    return 0;
-}

@@ -1,12 +1,18 @@
 CC=gcc
-CFLAGS=-Wall -Werror -Wno-unused-function -Wextra -g3 -fsanitize=undefined -fno-sanitize-recover -O0 -std=gnu11 -D_GNU_SOURCE
+CFLAGS=-Wall -Werror -Wno-unused-function -Wextra -g3 -fsanitize=undefined -fno-sanitize-recover -D_GNU_SOURCE
 
-default: sockui
+default: libsockui.a
 
-sockui: main.c
-	$(CC) -o $@ $< $(CFLAGS)
+sockui.o: sockui.c sockui.h
+	$(CC) -c -o $@ $< $(CFLAGS)
+
+libsockui.a: sockui.o
+	ar rcs $@ $^
+
+demo: demo.c sockui.o
+	$(CC) -o $@ $^ $(CFLAGS)
 
 .PHONY: clean
 
 clean:
-	rm -f sockui *.o
+	rm -f demo *.o *.a

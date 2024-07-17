@@ -23,3 +23,9 @@ typedef struct SockUI {
 } SockUI;
 
 int sockui_init(SockUI *sockui);
+int sockui_init(SockUI *sui);
+int sockui_recv(SockUI *sui);
+int sockui_draw_menu(SockUI *sui, wchar_t *menu, int dim[2]);
+void sockui_attach_client(SockUI *sui, int client_fd);
+void sockui_close(SockUI *sui);
+bool sockui_get_size(SockUI *sui, int dim[2]);
