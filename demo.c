@@ -1,6 +1,7 @@
 #include "sockui.h"
 
 #include <bits/time.h>
+#include <bits/types/siginfo_t.h>
 #include <signal.h>
 #include <stdio.h>
 #include <time.h>
@@ -9,13 +10,13 @@
 #include <wait.h>
 
 // Global so signal handler can find it
-SockUI sui = {
+sockui_t sui = {
     .port = 6969,
     .client_fd = -1,
     .serv_fd = -1,
 };
 
-void handler(int sig) {
+void exit_handler(int sig) {
     (void) sig;
     if (sui.client_fd != -1)
         sockui_close(&sui);
@@ -25,8 +26,9 @@ void handler(int sig) {
 }
 
 int main() {
-    signal(SIGINT, handler);
-    signal(SIGQUIT, handler);
+    signal(SIGINT, exit_handler);
+    signal(SIGQUIT, exit_handler);
+    signal(SIGPIPE, SIG_IGN);
 
     int ret = sockui_init(&sui);
     if (ret == -1) {
@@ -58,19 +60,22 @@ int main() {
     clock_gettime(CLOCK_MONOTONIC, &last);
 
     int i = 0, c;
+    sockui_err_t e;
     while (1) {
         if ((c = sockui_recv(&sui)) == 'q') break;
 
         clock_gettime(CLOCK_MONOTONIC, &curr);
         if ((curr.tv_sec - last.tv_sec) * 1000000000 + (curr.tv_nsec - last.tv_nsec) > 250000000) {
             menu[16] = L'0' + (i++%10);
-            sockui_draw_menu(&sui, menu, dim);
+            if ((e = sockui_draw_menu(&sui, menu, dim)) < 0) {
+                fprintf(stderr, "sockui_draw_menu: %s\n", sockui_strerror(e));
+                exit_handler(0);
+            }
             last = curr;
         }
         usleep(1000);
     }
 
-    sockui_close(&sui);
-
+    exit_handler(0);
     return 0;
 }

@@ -10,15 +10,13 @@
       "-g3",
       "-fsanitize=undefined",
       "-fno-sanitize-recover",
-      "-O0",
-      "-std=gnu11",
       "-D_GNU_SOURCE",
       "-o",
-      "sockui",
-      "main.c"
+      "sockui.o",
+      "sockui.c"
     ],
     "directory": "/home/thomasokeeffe/workspace/libs/sockui",
-    "file": "/home/thomasokeeffe/workspace/libs/sockui/main.c",
-    "output": "/home/thomasokeeffe/workspace/libs/sockui/sockui"
+    "file": "/home/thomasokeeffe/workspace/libs/sockui/sockui.c",
+    "output": "/home/thomasokeeffe/workspace/libs/sockui/sockui.o"
   }
 ]

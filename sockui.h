@@ -6,7 +6,15 @@
 #define SOCKUI_IBUF_LEN 32
 #define SOCKUI_TMPBUF_LEN 128
 
-typedef struct SockUI {
+/**
+ * Error type for this library. Always negative.
+ * SOCKUI_ESYS: A syscall returned an error and errno is set
+ * SOCKUI_EILSEQ: There was an illegal unicode sequence in an input
+ * SOCKUI_EIO: Failed to read or write to a socket
+ */
+typedef enum { SOCKUI_ESYS = -1, SOCKUI_EILSEQ = -2, SOCKUI_EIO = -3 } sockui_err_t;
+
+typedef struct sockui_s {
     int port;
     void *priv;
     bool (*resize)(int dim[2], void* priv);
@@ -20,12 +28,13 @@ typedef struct SockUI {
     int ibuf_cap;
     uint8_t ibuf[SOCKUI_IBUF_LEN];
     uint8_t tmpbuf[SOCKUI_TMPBUF_LEN];
-} SockUI;
+} sockui_t;
 
-int sockui_init(SockUI *sockui);
-int sockui_init(SockUI *sui);
-int sockui_recv(SockUI *sui);
-int sockui_draw_menu(SockUI *sui, wchar_t *menu, int dim[2]);
-void sockui_attach_client(SockUI *sui, int client_fd);
-void sockui_close(SockUI *sui);
-bool sockui_get_size(SockUI *sui, int dim[2]);
+int sockui_init(sockui_t *sockui);
+int sockui_init(sockui_t *sui);
+int sockui_recv(sockui_t *sui);
+int sockui_draw_menu(sockui_t *sui, wchar_t *menu, int dim[2]);
+void sockui_attach_client(sockui_t *sui, int client_fd);
+void sockui_close(sockui_t *sui);
+bool sockui_get_size(sockui_t *sui, int dim[2]);
+char *sockui_strerror(sockui_err_t e);
