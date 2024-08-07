@@ -87,7 +87,7 @@ static int new_sock(int port) {
     if (ret)
         goto err;
 
-    ret = listen(fd, 0);
+    ret = listen(fd, 1);
     if (ret)
         goto err;
 
