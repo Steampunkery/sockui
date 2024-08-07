@@ -324,12 +324,18 @@ int sockui_draw_menu(sockui_t *sui, wchar_t *menu, int dim[2]) {
  * @sui A valid pointer to a SockUI object
  * @client_fd File descriptor of the accepted client
  */
-void sockui_attach_client(sockui_t *sui, int client_fd) {
-    sui->client_fd = client_fd;
+int sockui_attach_client(sockui_t *sui) {
+    struct sockaddr_in client_sock_addr = { 0 };
+    socklen_t client_len = sizeof(client_sock_addr);
+    sui->client_fd = accept4(sui->serv_fd, (struct sockaddr *) &client_sock_addr, &client_len, SOCK_NONBLOCK);
+    if (sui->client_fd == -1) return SOCKUI_ESYS;
+
     emit(sui->client_fd, "\033[?1049h");
     emit(sui->client_fd, "\033[2J");
     emit(sui->client_fd, "\033[0;0H");
     emit(sui->client_fd, "\033[?25l");
+
+    return 0;
 }
 
 /**

@@ -34,7 +34,7 @@ int sockui_init(sockui_t *sockui);
 int sockui_init(sockui_t *sui);
 int sockui_recv(sockui_t *sui);
 int sockui_draw_menu(sockui_t *sui, wchar_t *menu, int dim[2]);
-void sockui_attach_client(sockui_t *sui, int client_fd);
+int sockui_attach_client(sockui_t *sui);
 void sockui_close(sockui_t *sui);
 bool sockui_get_size(sockui_t *sui, int dim[2]);
 char *sockui_strerror(sockui_err_t e);

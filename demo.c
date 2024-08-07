@@ -30,20 +30,18 @@ int main() {
     signal(SIGQUIT, exit_handler);
     signal(SIGPIPE, SIG_IGN);
 
+    // TODO: Determine if socket options should be set manually by the user or
+    // otherwise
     int ret = sockui_init(&sui);
     if (ret == -1) {
         fprintf(stderr, "Failed to init SockUI\n");
         _exit(1);
     }
 
-    struct sockaddr_in client_sock_addr = { 0 };
-    socklen_t client_len = sizeof(client_sock_addr);
-    int client_fd = accept4(sui.serv_fd, (struct sockaddr *) &client_sock_addr, &client_len, SOCK_NONBLOCK);
-    if (client_fd == -1) {
-        fprintf(stderr, "Failed to accept client\n");
+    if (sockui_attach_client(&sui) == -1) {
+        fprintf(stderr, "Failed to attach client\n");
         _exit(1);
     }
-    sockui_attach_client(&sui, client_fd);
 
     int dim[2];
     bool success = sockui_get_size(&sui, dim);
