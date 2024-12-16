@@ -251,17 +251,17 @@ int sockui_recv(sockui_t *sui) {
     uint8_t b = 0;
 
     do {
-        is_ctrl_code = false;
         if (sui->ibuf_cap == sui->ibuf_idx) {
             sui->ibuf_cap = sock_read(sui->client_fd, sui->ibuf, sizeof(sui->ibuf));
+            sui->ibuf_idx = 0;
             if (!sui->ibuf_cap) return 256;
             if (sui->ibuf_cap == -1) {
                 ret = SOCKUI_ESYS;
                 goto reset;
             }
-            sui->ibuf_idx = 0;
         }
 
+        is_ctrl_code = false;
         b = sui->ibuf[sui->ibuf_idx++];
         if (b == 0x0c) { // ^L
             is_ctrl_code = true;
@@ -335,6 +335,9 @@ int sockui_attach_client(sockui_t *sui) {
     emit(sui->client_fd, "\033[0;0H");
     emit(sui->client_fd, "\033[?25l");
 
+    close(sui->serv_fd);
+    sui->serv_fd = -1;
+
     return 0;
 }
 
@@ -347,7 +350,7 @@ void sockui_close(sockui_t *sui) {
     emit(sui->client_fd, "\033[?2J");
     emit(sui->client_fd, "\033[?1049l");
     emit(sui->client_fd, "\033[?25h");
-    close(sui->client_fd);
-    close(sui->serv_fd);
+    if (sui->client_fd != -1) close(sui->client_fd);
+    if (sui->serv_fd != -1) close(sui->serv_fd);
 }
 
