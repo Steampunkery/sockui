@@ -60,7 +60,11 @@ int main() {
     int i = 0, c;
     sockui_err_t e;
     while (1) {
-        if ((c = sockui_recv(&sui)) == 'q') break;
+        if ((c = sockui_recv(&sui)) == 'q') {
+            break;
+        } else if (c > -1 && c < 256) {
+            printf("Received: %c\n", c);
+        }
 
         clock_gettime(CLOCK_MONOTONIC, &curr);
         if ((curr.tv_sec - last.tv_sec) * 1000000000 + (curr.tv_nsec - last.tv_nsec) > 250000000) {
