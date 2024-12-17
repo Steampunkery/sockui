@@ -9,7 +9,7 @@
 #include <sys/socket.h>
 
 /// Simple wrapper for writing string literals
-#define emit(fd, s) write(fd, s, sizeof(s));
+#define emit(fd, s) send(fd, s, sizeof(s), MSG_NOSIGNAL)
 
 /// Shortcut macro; should remove after clarifying error API
 #define IF_ERR_RETURN(cond) do { int __x; if ((__x = (cond)) < 0) return __x; } while (0);
@@ -57,7 +57,7 @@ static ssize_t sock_read(int fd, void *buf, size_t nbytes) {
  * @return 0 on success, sockui_err_t on error. TODO: Make this return num written bytes?
  */
 static ssize_t sock_write(int fd, void *buf, size_t nbytes) {
-    ssize_t ret = write(fd, buf, nbytes);
+    ssize_t ret = send(fd, buf, nbytes, MSG_NOSIGNAL);
     if (ret == -1) return SOCKUI_ESYS;
     else if (ret != (ssize_t) nbytes) return SOCKUI_EIO;
 
@@ -107,7 +107,7 @@ err:
  * @buf Buffer to write UTF-8 into
  * @nbuf Length of buf
  * @nbytes Number of bytes written into buf
- * @return Number of CODEPOINTS written to buf or -2 on error
+ * @return Number of CODEPOINTS written to buf or SOCKUI_EILSEQ on error
  */
 static int unicode_to_utf8(wchar_t *str, int nstr, uint8_t *buf, int nbuf, int *nbytes) {
     if (!str || !nstr) return 0;
@@ -222,7 +222,8 @@ bool sockui_get_size(sockui_t *sui, int dim[2]) {
     if (sock_read(sui->client_fd, NULL, 0) == -1)
         return false;
 
-    emit(sui->client_fd, "\033[s\033[9999;9999H\033[6n\033[u");
+    if (emit(sui->client_fd, "\033[s\033[9999;9999H\033[6n\033[u") == -1)
+        return false;
     usleep(100*1000);
 
     // sui->tmpbuf is definitely big enough
@@ -246,7 +247,6 @@ bool sockui_get_size(sockui_t *sui, int dim[2]) {
  * @return A single byte on success, 256 if no bytes available, or sockui_err_t
  */
 int sockui_recv(sockui_t *sui) {
-    int ret;
     bool is_ctrl_code;
     uint8_t b = 0;
 
@@ -256,8 +256,8 @@ int sockui_recv(sockui_t *sui) {
             sui->ibuf_idx = 0;
             if (!sui->ibuf_cap) return 256;
             if (sui->ibuf_cap == -1) {
-                ret = SOCKUI_ESYS;
-                goto reset;
+                sui->ibuf_cap = sui->ibuf_idx = 0;
+                return SOCKUI_ESYS;
             }
         }
 
@@ -266,16 +266,13 @@ int sockui_recv(sockui_t *sui) {
         if (b == 0x0c) { // ^L
             is_ctrl_code = true;
             sui->should_redraw = true;
-            emit(sui->client_fd, "\033[2J");
+            if (emit(sui->client_fd, "\033[2J") == -1)
+                return SOCKUI_ESYS;
         }
     } while (is_ctrl_code);
 
     return b;
 
-reset:
-    sui->ibuf_cap = 0;
-    sui->ibuf_idx = 0;
-    return ret;
 }
 
 /**
@@ -291,8 +288,8 @@ int sockui_draw_menu(sockui_t *sui, wchar_t *menu, int dim[2]) {
     int nstr = dim[0]*dim[1];
     int nbuf = sizeof(sui->tmpbuf);
 
-    emit(sui->client_fd, "\033[2J");
-    emit(sui->client_fd, "\033[0;0H");
+    if (emit(sui->client_fd, "\033[2J\033[0;0H") == -1)
+        return SOCKUI_ESYS;
 
     int total = 0, n, nbytes;
     while ((n = unicode_to_utf8(menu+total, nstr-total, sui->tmpbuf, nbuf, &nbytes))) {
@@ -322,7 +319,7 @@ int sockui_draw_menu(sockui_t *sui, wchar_t *menu, int dim[2]) {
  * client_fd
  *
  * @sui A valid pointer to a SockUI object
- * @client_fd File descriptor of the accepted client
+ * @return 0 on success, sockui_err_t on error
  */
 int sockui_attach_client(sockui_t *sui) {
     struct sockaddr_in client_sock_addr = { 0 };
@@ -330,10 +327,8 @@ int sockui_attach_client(sockui_t *sui) {
     sui->client_fd = accept4(sui->serv_fd, (struct sockaddr *) &client_sock_addr, &client_len, SOCK_NONBLOCK);
     if (sui->client_fd == -1) return SOCKUI_ESYS;
 
-    emit(sui->client_fd, "\033[?1049h");
-    emit(sui->client_fd, "\033[2J");
-    emit(sui->client_fd, "\033[0;0H");
-    emit(sui->client_fd, "\033[?25l");
+    if (emit(sui->client_fd, "\033[?1049h\033[2J\033[0;0H\033[?25l") == -1)
+        return SOCKUI_ESYS;
 
     close(sui->serv_fd);
     sui->serv_fd = -1;
@@ -347,10 +342,11 @@ int sockui_attach_client(sockui_t *sui) {
  * @sui A valid pointer to a SockUI object
  */
 void sockui_close(sockui_t *sui) {
-    emit(sui->client_fd, "\033[?2J");
-    emit(sui->client_fd, "\033[?1049l");
-    emit(sui->client_fd, "\033[?25h");
-    if (sui->client_fd != -1) close(sui->client_fd);
+    // Try to send these codes, but errors don't matter here
+    if (sui->client_fd != -1) {
+        emit(sui->client_fd, "\033[?2J\033[?1049l\033[?25h");
+        close(sui->client_fd);
+    }
     if (sui->serv_fd != -1) close(sui->serv_fd);
 }
 
