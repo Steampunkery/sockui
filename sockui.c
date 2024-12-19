@@ -196,7 +196,7 @@ char *sockui_strerror(sockui_err_t e) {
  * @sui A valid pointer to a SockUI object with port initialized
  * @return 0 on success, sockui_err_t on error
  */
-int sockui_init(sockui_t *sui) {
+int sockui_init(sockui_t *sui, int opts) {
     sui->client_fd = -1;
     sui->serv_fd = new_sock(sui->port);
     if (sui->serv_fd < 0)
@@ -205,6 +205,9 @@ int sockui_init(sockui_t *sui) {
     sui->ibuf_idx = 0;
     sui->ibuf_cap = 0;
     sui->should_redraw = false;
+
+    if (opts & SOCKUI_NONBLOCK)
+        setsockopt(sui->serv_fd, SOL_SOCKET, SOCK_NONBLOCK, &(int) { 1 }, sizeof(int));
 
     return 0;
 }

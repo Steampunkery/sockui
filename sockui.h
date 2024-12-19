@@ -14,6 +14,12 @@
  */
 typedef enum { SOCKUI_ESYS = -1, SOCKUI_EILSEQ = -2, SOCKUI_EIO = -3 } sockui_err_t;
 
+/**
+ * Options type for new sockets. Can be bitwise OR'd with each other so must be
+ * powers of 2.
+ */
+typedef enum { SOCKUI_NONBLOCK = 1 } sockui_opt_t;
+
 typedef struct sockui_s {
     int port;
     void *priv;
@@ -30,8 +36,7 @@ typedef struct sockui_s {
     uint8_t tmpbuf[SOCKUI_TMPBUF_LEN];
 } sockui_t;
 
-int sockui_init(sockui_t *sockui);
-int sockui_init(sockui_t *sui);
+int sockui_init(sockui_t *sui, int opts);
 int sockui_recv(sockui_t *sui);
 int sockui_draw_menu(sockui_t *sui, wchar_t *menu, int dim[2]);
 int sockui_attach_client(sockui_t *sui);
