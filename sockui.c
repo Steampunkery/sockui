@@ -163,9 +163,9 @@ static int utf8_offset(uint8_t *buf, int count) {
     while (count > 0)
         if ((buf[offset++] & 0xc0) != 0x80) count--;
 
-    if (buf[offset-1] & 0xC0) offset += 2;
-    else if (buf[offset-1] & 0xE0) offset += 3;
-    else if (buf[offset-1] & 0xF0) offset += 4;
+    if (buf[offset-1] >> 5 == 0x6) offset += 1;
+    else if (buf[offset-1] >> 4 == 0xE) offset += 2;
+    else if (buf[offset-1] >> 3 == 0x1E) offset += 3;
 
     return offset;
 }
